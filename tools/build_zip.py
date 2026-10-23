@@ -1,6 +1,6 @@
 """Build the release zip of the skill and run the repository privacy scan.
 
-  python tools/build_zip.py --version v1.0.0   # dist/semantic-core-expander-v1.0.0.zip (+ .sha256)
+  python tools/build_zip.py --version v0.1.0   # dist/semantic-core-expander-v0.1.0.zip (+ .sha256)
   python tools/build_zip.py --check            # privacy scan + SKILL.md validation only
 
 The zip holds exactly one top-level folder, semantic-core-expander/, with an
@@ -129,7 +129,7 @@ def build(version, out_dir):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--version", default="dev", help="version label, e.g. v1.0.0")
+    ap.add_argument("--version", default="dev", help="version label, e.g. v0.1.0")
     ap.add_argument("--out", default=str(ROOT / "dist"))
     ap.add_argument("--check", action="store_true", help="scan and validate only")
     args = ap.parse_args(argv)

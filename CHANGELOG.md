@@ -3,7 +3,7 @@
 All notable changes to this project are documented here. Versions follow
 [Semantic Versioning](https://semver.org/).
 
-## [1.0.0] - 2026-10-23
+## [0.1.0] - 2026-10-23
 
 ### Added
 - Skill `semantic-core-expander`: Google Autocomplete crawl for any seeds,

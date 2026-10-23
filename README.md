@@ -135,7 +135,7 @@ python -m unittest discover -s tests -v
 ```
 
 ```bash
-python tools/build_zip.py --version v1.0.0
+python tools/build_zip.py --version v0.1.0
 ```
 
 Releasing: update `CHANGELOG.md`, then push a tag `vX.Y.Z`. The Release
