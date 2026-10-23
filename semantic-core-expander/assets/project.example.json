@@ -1,0 +1,41 @@
+{
+  "project": "dental-clinic-austin",
+  "site": "https://example.com",
+  "goal": "Expand the semantic core of a dental clinic site in Austin, TX",
+  "gl": "us",
+  "hl": "en",
+  "language": "en",
+  "seeds": [
+    "dentist austin",
+    "dentists in austin",
+    "dental clinic austin",
+    "austin dentist"
+  ],
+  "roots": ["dentist", "dental"],
+  "core": ["dentist austin", "dental clinic austin"],
+  "modifiers": [
+    "price", "cost", "reviews", "best", "cheap", "emergency", "24 hours", "open now",
+    "near me", "downtown", "south", "north", "pediatric", "cosmetic", "implants",
+    "veneers", "whitening", "braces", "invisalign", "root canal", "crown", "cleaning",
+    "wisdom teeth", "extraction", "no insurance", "medicaid", "payment plan", "sedation"
+  ],
+  "questions": ["how much", "how to", "what is", "which", "when", "why", "can"],
+  "exclude_languages": [],
+  "allow_words": [],
+  "exclude": {
+    "stems": [],
+    "regex": []
+  },
+  "limits": {
+    "max_requests": 3000,
+    "workers": 2,
+    "interval": 0.4,
+    "max_words": 7
+  },
+  "cleaning": {
+    "max_words": 10,
+    "filter_adult": true,
+    "merge_word_order": true,
+    "min_cluster_size": 3
+  }
+}

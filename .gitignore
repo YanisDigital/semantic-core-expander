@@ -1,0 +1,27 @@
+# Project data produced by the skill: never publish it
+semantic-core/
+data/
+*.sqlite
+*.sqlite3
+*.db
+*.xlsx
+*.xls
+*.csv
+*.log
+
+# Build output
+dist/
+*.zip
+*.sha256
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
