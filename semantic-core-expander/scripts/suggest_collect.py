@@ -13,6 +13,7 @@ Exit codes: 0 finished or budget reached, 2 config error, 3 blocked by Google
 (resume later), 4 network failure.
 """
 import argparse
+import codecs
 import heapq
 import itertools
 import json
@@ -32,9 +33,11 @@ from textutils import Filters, normalize
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
-# The only host this skill ever contacts.
+VERSION = "0.1.1"
+# The only host this skill ever contacts. Redirects are refused, so it stays that way.
 ENDPOINT = "https://suggestqueries.google.com/complete/search"
-USER_AGENT = "Mozilla/5.0 (compatible; semantic-core-expander/1.0)"
+USER_AGENT = f"Mozilla/5.0 (compatible; semantic-core-expander/{VERSION})"
+JITTER = (1.0, 1.4)  # random factor on the interval; never below 1, so the floor holds
 FULL = 15         # client=chrome returns 15 suggestions when there are more
 MIN_FULL = 8
 MAX_LEN = 80
@@ -43,6 +46,8 @@ BLOCK_CODES = (429, 403, 503)
 STOP_PAUSE = 300  # one shared pause before giving up in --on-block stop mode
 MAX_SUGGESTIONS = 50
 MAX_SUGGESTION_LEN = 200
+MAX_CLIENT_ERRORS = 10  # consecutive 4xx answers before giving up
+EMPTY = {"s": [], "rel": []}
 
 
 class Blocked(Exception):
@@ -53,23 +58,42 @@ class NetworkFailure(Exception):
     pass
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Refuse redirects: a 3xx surfaces as HTTPError and is treated as a block."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def _charset(headers):
+    name = headers.get_content_charset() or "utf-8"
+    try:
+        codecs.lookup(name)
+    except LookupError:
+        return "utf-8"
+    return name
+
+
 class Fetcher:
     """Throttled, shared-backoff client for the autocomplete endpoint."""
 
-    def __init__(self, gl, hl, interval, on_block):
+    def __init__(self, gl, hl, interval, on_block, endpoint=ENDPOINT):
         self.gl, self.hl = gl, hl
         self.interval = interval
         self.on_block = on_block
+        self.endpoint = endpoint
+        self._opener = urllib.request.build_opener(_NoRedirect)
         self._lock = threading.Lock()
         self._next_slot = 0.0
         self._backoff = 0.0
         self._blocks = 0
+        self._client_errors = 0
 
     def _throttle(self):
         with self._lock:
             now = time.time()
             start = max(now, self._next_slot, self._backoff)
-            self._next_slot = start + self.interval * random.uniform(0.8, 1.3)
+            self._next_slot = start + self.interval * random.uniform(*JITTER)
         time.sleep(max(0.0, start - now))
 
     def _blocked(self, code):
@@ -93,27 +117,37 @@ class Fetcher:
     def fetch(self, q):
         params = urllib.parse.urlencode({"client": "chrome", "hl": self.hl,
                                          "gl": self.gl, "q": q})
-        req = urllib.request.Request(f"{ENDPOINT}?{params}", headers={
+        req = urllib.request.Request(f"{self.endpoint}?{params}", headers={
             "User-Agent": USER_AGENT,
             "Accept-Language": f"{self.hl},{self.hl.split('-')[0]};q=0.9",
         })
         for attempt in range(8):
             self._throttle()
             try:
-                with urllib.request.urlopen(req, timeout=20) as r:
-                    charset = r.headers.get_content_charset() or "utf-8"
-                    data = json.loads(r.read(1_000_000).decode(charset, "replace"))
+                with self._opener.open(req, timeout=20) as r:
+                    raw = r.read(1_000_000).decode(_charset(r.headers), "replace")
+                data = parse_response(json.loads(raw))
                 with self._lock:
-                    self._blocks = 0
-                return parse_response(data)
+                    self._blocks = self._client_errors = 0
+                return data
             except urllib.error.HTTPError as e:
-                if e.code not in BLOCK_CODES:
-                    raise NetworkFailure(f"HTTP {e.code}")
-                self._blocked(e.code)
+                if e.code in BLOCK_CODES or 300 <= e.code < 400:
+                    self._blocked(e.code)
+                elif 400 <= e.code < 500:
+                    # This one query is unacceptable to Google: skip it, keep crawling.
+                    with self._lock:
+                        self._client_errors += 1
+                        if self._client_errors >= MAX_CLIENT_ERRORS:
+                            raise NetworkFailure(f"HTTP {e.code} for {MAX_CLIENT_ERRORS} "
+                                                 "queries in a row")
+                    return dict(EMPTY)
+                else:
+                    print(f"  ! HTTP {e.code}, retrying", flush=True)
+                    time.sleep(5 * (attempt + 1))
             except (urllib.error.URLError, TimeoutError, ConnectionError, ValueError) as e:
                 print(f"  ! network: {e}, retrying", flush=True)
                 time.sleep(5 * (attempt + 1))
-        raise NetworkFailure(q)
+        raise NetworkFailure("no valid answer after 8 attempts")
 
 
 def parse_response(data):
@@ -196,7 +230,7 @@ def main(argv=None, fetcher=None):
 
     if args.dry_run:
         todo = sum(1 for q in start_q if q not in cached)
-        rate = min(lim["workers"] * 2.0, 1.0 / lim["interval"])
+        rate = min(lim["workers"] * 2.0, 1.0 / (lim["interval"] * sum(JITTER) / 2))
         print(f"gl={cfg['gl']} hl={cfg['hl']} language={cfg['language']} "
               f"roots={len(cfg['roots'])}")
         print(f"Start queries: {len(start_q)} ({todo} not cached), cached answers: {len(cached)}")
@@ -240,64 +274,74 @@ def main(argv=None, fetcher=None):
         write_json_atomic(status_path, status)
 
     save_status()
-    with ThreadPoolExecutor(lim["workers"]) as pool:
-        while queue:
-            batch, budget_left = [], budget - network
-            while queue and len(batch) < BATCH:
-                q = heapq.heappop(queue)[2]
-                if q not in cached:
-                    if budget_left <= 0:
-                        deferred += 1  # left for the next run
-                        continue
-                    budget_left -= 1
-                batch.append(q)
-            if not batch:
-                state = "budget_reached"
-                break
-            futures = [pool.submit(get, q) for q in batch]
-            results, failure = [], None
-            for fut in futures:
-                try:
-                    results.append(fut.result())
-                except (Blocked, NetworkFailure) as e:
-                    failure = failure or e
-            new_rows = []
-            for q, resp, remote in results:
-                processed += 1
-                if remote:
-                    network += 1
-                    cached[q] = json.dumps(resp, ensure_ascii=False)
-                    new_rows.append((cache_key(cfg["gl"], cfg["hl"], q), cfg["gl"], cfg["hl"],
-                                     q, cached[q], time.time()))
-                sugg = [normalize(s, profile) for s in resp["s"]]
-                max_seen = max(max_seen, len(sugg))
-                for s in sugg:
-                    if flt.relevant(s):
-                        found.add(s)
-                    if len(s.split()) < lim["max_words"] and flt.keep_expanding(s):
-                        push(s + " ")
-                # A full list means more lies under this prefix: go one letter deeper.
-                full = len(sugg) >= max(MIN_FULL, min(FULL, max_seen))
-                if full and len(q) < MAX_LEN and flt.keep_expanding(q.strip() or q):
-                    for c in (word_start if q.endswith(" ") else letters):
-                        push(q + c)
-            if new_rows:
-                con.executemany("INSERT OR REPLACE INTO cache VALUES (?,?,?,?,?,?)", new_rows)
-                con.commit()
-                print(f"processed {processed}, network {network} "
-                      f"({network / max(1.0, time.time() - started):.1f}/s), "
-                      f"queue {len(queue) + deferred}, phrases {len(found)}", flush=True)
-            if failure:
-                # Unanswered queries were never cached, so a re-run retries them.
-                if isinstance(failure, Blocked):
-                    state, exit_code = "blocked", 3
-                    print("Google is blocking requests. Answers so far are cached; "
-                          "run again later and the crawl resumes from the cache.", flush=True)
-                else:
-                    state, exit_code = "network_error", 4
-                    print(f"Network failure ({failure}). Answers so far are cached.", flush=True)
-                break
-            save_status()
+    try:
+        with ThreadPoolExecutor(lim["workers"]) as pool:
+            while queue:
+                batch, budget_left = [], budget - network
+                while queue and len(batch) < BATCH:
+                    q = heapq.heappop(queue)[2]
+                    if q not in cached:
+                        if budget_left <= 0:
+                            deferred += 1  # left for the next run
+                            continue
+                        budget_left -= 1
+                    batch.append(q)
+                if not batch:
+                    state = "budget_reached"
+                    break
+                futures = [pool.submit(get, q) for q in batch]
+                results, failure = [], None
+                for fut in futures:
+                    try:
+                        results.append(fut.result())
+                    except (Blocked, NetworkFailure) as e:
+                        failure = failure or e
+                new_rows = []
+                for q, resp, remote in results:
+                    processed += 1
+                    if remote:
+                        network += 1
+                        cached[q] = json.dumps(resp, ensure_ascii=False)
+                        new_rows.append((cache_key(cfg["gl"], cfg["hl"], q), cfg["gl"],
+                                         cfg["hl"], q, cached[q], time.time()))
+                    sugg = [normalize(s, profile) for s in resp["s"]]
+                    max_seen = max(max_seen, len(sugg))
+                    for s in sugg:
+                        if flt.relevant(s):
+                            found.add(s)
+                        if len(s.split()) < lim["max_words"] and flt.keep_expanding(s):
+                            push(s + " ")
+                    # A full list means more lies under this prefix: go one letter deeper.
+                    full = len(sugg) >= max(MIN_FULL, min(FULL, max_seen))
+                    if full and len(q) < MAX_LEN and flt.keep_expanding(q.strip() or q):
+                        for c in (word_start if q.endswith(" ") else letters):
+                            push(q + c)
+                if new_rows:
+                    con.executemany("INSERT OR REPLACE INTO cache VALUES (?,?,?,?,?,?)",
+                                    new_rows)
+                    con.commit()
+                    print(f"processed {processed}, network {network} "
+                          f"({network / max(1.0, time.time() - started):.1f}/s), "
+                          f"queue {len(queue) + deferred}, phrases {len(found)}", flush=True)
+                if failure:
+                    # Unanswered queries were never cached, so a re-run retries them.
+                    if isinstance(failure, Blocked):
+                        state, exit_code = "blocked", 3
+                        print("Google is blocking requests. Answers so far are cached; "
+                              "run again later and the crawl resumes from the cache.",
+                              flush=True)
+                    else:
+                        state, exit_code = "network_error", 4
+                        print(f"Network failure ({failure}). Answers so far are cached.",
+                              flush=True)
+                    break
+                save_status()
+    except BaseException as e:
+        # Leave an honest status behind instead of a stale "running".
+        state = "interrupted" if isinstance(e, KeyboardInterrupt) else "error"
+        save_status({"state": state, "error": type(e).__name__, "finished": time.time()})
+        con.close()
+        raise
 
     if state == "done" and (queue or deferred):
         state = "budget_reached"

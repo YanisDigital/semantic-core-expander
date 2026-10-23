@@ -156,8 +156,9 @@ def load_project(project_dir):
     roots = _str_list(cfg, "roots")
     return {
         "dir": root,
-        "data_dir": root / "data",
-        "output_dir": root / "output",
+        # Resolved and checked, so a symlinked data/ or output/ cannot point elsewhere.
+        "data_dir": inside(root, root / "data"),
+        "output_dir": inside(root, root / "output"),
         "project": slug,
         "site": str(cfg.get("site", "")),
         "goal": str(cfg.get("goal", "")),

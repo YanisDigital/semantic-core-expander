@@ -82,26 +82,34 @@ background and can continue later from the cache.
 
 - **One network destination.** The scripts only call
   `https://suggestqueries.google.com/complete/search` with the query, `gl`,
-  `hl` and a User-Agent that names the tool. No accounts, cookies, API keys,
-  telemetry or third-party services.
+  `hl` and a User-Agent that names the tool. Redirects are refused (treated as a
+  block), so a request never ends up on another host or on plain HTTP. No
+  accounts, cookies, API keys, telemetry or third-party services. If you have
+  a system proxy configured (`HTTPS_PROXY`), Python uses it, as it does for any
+  program; the skill itself adds none.
 - **Local data.** Cache and exports stay in your project folder. `.gitignore`
   excludes `semantic-core/`, SQLite, Excel and CSV files so you do not publish
   them by accident.
 - **No shell, no eval.** Scripts use the Python standard library (plus optional
   openpyxl), never run subprocesses or evaluate input. User text reaches them
   through a JSON file, never through command-line interpolation. The config is
-  validated (codes, list sizes, rate caps) and output paths are confined to the
-  project directory. SQLite queries are parameterised.
+  validated (codes, list sizes, rate caps) and every file the scripts write
+  (cache, status, exports) is confined to the project directory, symlinks
+  included. SQLite queries are parameterised.
 - **Untrusted text handled as data.** Google responses are size- and
-  type-checked. Phrases starting with `=`, `+`, `-`, `@` cannot turn into
-  spreadsheet formulas (stored as text in XLSX, prefixed with `'` in CSV). The
-  skill instructs Claude to treat suggestions and web pages as data, never as
-  instructions.
+  type-checked. Control and invisible formatting characters (ANSI escapes,
+  bidi overrides) are stripped before a phrase is printed or saved. Phrases
+  starting with `=`, `+`, `-`, `@` cannot turn into spreadsheet formulas
+  (stored as text in XLSX, prefixed with `'` in CSV). The skill instructs
+  Claude to treat suggestions and web pages as data, never as instructions.
 - **Clean releases.** `tools/build_zip.py` packages an allowlist of files only
-  and refuses to build if the repository contains data files, e-mail addresses,
+  and refuses to build if the repository contains data files, office documents,
+  images with EXIF/XMP metadata, unreviewed file types, e-mail addresses,
   personal paths or credential-like strings. CI runs the same scan. Workflows
   use only official actions pinned to commit SHAs, with least-privilege
-  permissions. Each release ships a SHA-256 checksum.
+  permissions; the release job installs no third-party packages, and the CI test
+  dependency is hash-pinned. Dependabot keeps both pins current. Each release
+  ships a SHA-256 checksum.
 
 To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
@@ -109,9 +117,9 @@ To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 The autocomplete endpoint is public but not an official API; Google's Terms of
 Service apply, and you are responsible for your use. The skill keeps a low,
-fixed rate, pauses once when Google answers 429/403/503, then stops and resumes
-later from the cache. It does not and will not support proxies, IP or
-User-Agent rotation, or CAPTCHA solving. Details:
+fixed rate, pauses once when Google answers 429/403/503 or redirects, then
+stops and resumes later from the cache. It does not and will not support proxy
+or IP rotation, User-Agent rotation, or CAPTCHA solving. Details:
 [`responsible-use.md`](semantic-core-expander/references/responsible-use.md).
 
 ## Repository layout

@@ -23,7 +23,7 @@ from collections import Counter, defaultdict
 from datetime import date
 
 from common import ConfigError, csv_safe, inside, load_project
-from textutils import Filters, normalize, tokens
+from textutils import Filters, normalize, strip_controls, tokens
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -100,8 +100,14 @@ def load_labels(cfg):
         return {}, set()
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
-    labels = {str(k): str(v)[:80] for k, v in (data.get("labels") or {}).items()}
-    return labels, {str(x) for x in data.get("ignore_stems") or []}
+    labels = data.get("labels") if isinstance(data, dict) else None
+    ignore = data.get("ignore_stems") if isinstance(data, dict) else None
+    if not isinstance(data, dict) or not isinstance(labels or {}, dict) \
+            or not isinstance(ignore or [], list):
+        raise ConfigError('cluster_labels.json must be {"labels": {stem: topic}, '
+                          '"ignore_stems": [stem, ...]}')
+    labels = {str(k): strip_controls(str(v)).strip()[:80] for k, v in (labels or {}).items()}
+    return labels, {str(x) for x in ignore or []}
 
 
 def cluster(cfg, kept, idx, labels=None, ignore=None):

@@ -25,7 +25,12 @@ FIXED_TIME = (2020, 1, 1, 0, 0, 0)
 
 SKIP_DIRS = {".git", "dist", "__pycache__", "semantic-core", ".venv", "venv", "node_modules"}
 DATA_EXT = {".sqlite", ".sqlite3", ".db", ".xlsx", ".xls", ".csv", ".log", ".zip", ".pyc"}
-TEXT_EXT = {".py", ".md", ".json", ".yml", ".yaml", ".txt", ".toml", ".cfg", ".ini", ""}
+TEXT_EXT = {".py", ".md", ".json", ".yml", ".yaml", ".txt", ".toml", ".cfg", ".ini", ".svg", ""}
+# Office documents carry author / company metadata: keep them out of the repo.
+DOC_EXT = {".pdf", ".doc", ".docx", ".odt", ".rtf", ".ppt", ".pptx", ".odp", ".pages", ".key"}
+IMAGE_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+# EXIF (camera, GPS, device), PNG text chunks and XMP may hold names or locations.
+IMAGE_META = [b"Exif\x00\x00", b"eXIf", b"tEXt", b"iTXt", b"zTXt", b"<x:xmpmeta"]
 # Patterns are assembled from pieces so this file does not flag itself.
 PRIVACY = [
     ("email address", re.compile(r"[\w.+-]+" + "@" + r"[\w-]+\.[\w.-]+")),
@@ -49,10 +54,20 @@ def privacy_scan(root=ROOT):
     problems = []
     for p in iter_repo_files(root):
         rel = p.relative_to(root).as_posix()
-        if p.suffix.lower() in DATA_EXT:
+        ext = p.suffix.lower()
+        if ext in DATA_EXT:
             problems.append(f"{rel}: data file in the repository ({p.suffix})")
             continue
-        if p.suffix.lower() not in TEXT_EXT:
+        if ext in DOC_EXT:
+            problems.append(f"{rel}: document with possible author metadata ({p.suffix})")
+            continue
+        if ext in IMAGE_EXT:
+            data = p.read_bytes()
+            if any(marker in data for marker in IMAGE_META):
+                problems.append(f"{rel}: image metadata (EXIF / text / XMP), strip it first")
+            continue
+        if ext not in TEXT_EXT:
+            problems.append(f"{rel}: unreviewed file type ({p.suffix}); extend the scan first")
             continue
         try:
             text = p.read_text(encoding="utf-8")

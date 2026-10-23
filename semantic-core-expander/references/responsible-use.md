@@ -11,7 +11,12 @@ Planner, Search Console).
 
 The skill sends the query text, `gl`, `hl` and a User-Agent that names the
 tool. It sends no cookies, accounts, API keys or personal data, and it has no
-telemetry: nothing is reported anywhere else.
+telemetry: nothing is reported anywhere else. Redirects are never followed,
+so requests cannot be bounced to another host or to plain HTTP. A system proxy
+set in `HTTPS_PROXY` is used by Python as for any other program.
+
+Your seed queries do reach Google. If a client's niche or launch plans are
+confidential, keep that in mind before collecting.
 
 ## Why the limits exist
 
@@ -20,11 +25,15 @@ requests per second ran for hours without problems, while about 8 per second led
 to an IP block (HTTP 403) lasting around an hour. So:
 
 - At most 4 parallel connections and at least 0.3 s between any two requests,
-  enforced by the config loader, not just suggested.
-- One shared pause for all threads when Google answers 429 / 403 / 503. In the
-  default mode the collector then stops with exit code 3; `--on-block wait`
-  waits longer (up to about 2.5 hours in total) before stopping.
-- No proxy support, no IP or User-Agent rotation, no CAPTCHA handling. A block
+  enforced by the config loader, not just suggested. Random jitter only ever
+  lengthens the gap (1.0-1.4 × interval).
+- One shared pause for all threads when Google answers 429 / 403 / 503 or
+  redirects (a redirect usually means a CAPTCHA page). In the default mode the
+  collector then stops with exit code 3; `--on-block wait` waits longer (up to
+  about 2.5 hours in total) before stopping.
+- A query Google rejects with another 4xx is skipped; ten such answers in a row
+  stop the run (exit code 4).
+- No proxy or IP rotation, no User-Agent rotation, no CAPTCHA handling. A block
   is a signal to slow down or stop, not something to get around.
 
 Everything already answered is cached, so stopping costs nothing: the next run

@@ -26,11 +26,15 @@ In scope: anything in this repository, in particular
 
 Design guarantees the project aims to keep:
 
-- the only network destination is `https://suggestqueries.google.com/complete/search`;
+- the only network destination is `https://suggestqueries.google.com/complete/search`,
+  and redirects are never followed;
 - no credentials, telemetry, subprocesses, `eval` or `exec`;
 - all writes stay inside the user's project directory;
+- collected text is stripped of control and bidi characters before it is
+  printed or saved;
 - spreadsheet exports cannot contain live formulas from collected text;
-- release zips contain only allowlisted files and pass a privacy scan.
+- release zips contain only allowlisted files and pass a privacy scan, and the
+  release job runs no third-party packages.
 
 A change that breaks one of these is a security bug.
 

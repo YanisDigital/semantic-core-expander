@@ -19,9 +19,9 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.13"
-      - name: Install optional dependency
-        run: python -m pip install openpyxl==3.1.5
-      - name: Unit tests (offline)
+      # No third-party packages in this job: it holds a write token. The XLSX test
+      # skips here and runs in CI, where the dependency is hash-pinned.
+      - name: Unit tests (offline, standard library only)
         run: python -m unittest discover -s tests -v
       - name: Build zip (runs the privacy scan first)
         run: python tools/build_zip.py --version "$GITHUB_REF_NAME"

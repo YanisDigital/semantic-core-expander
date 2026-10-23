@@ -9,10 +9,29 @@ import unicodedata
 APOS = str.maketrans({"’": "'", "ʼ": "'", "`": "'", "´": "'", "‘": "'"})
 TOKEN = re.compile(r"[^\W_]+(?:['-][^\W_]+)*")
 REPEATS = re.compile(r"([^\W\d_])\1{3,}")
+# Zero-width (non-)joiners are part of normal spelling in some scripts; keep them.
+KEEP_FORMAT = {"‌", "‍"}
+
+
+def strip_controls(text):
+    """Drop control, format (bidi overrides, zero-width) and private-use characters.
+
+    Suggestions are untrusted text: an ANSI escape or U+202E could rewrite a
+    terminal line or flip how a phrase is displayed in a spreadsheet.
+    """
+    out = []
+    for ch in text:
+        if ch.isspace():
+            out.append(" ")
+        elif unicodedata.category(ch) in ("Cc", "Cf", "Co", "Cs") and ch not in KEEP_FORMAT:
+            continue
+        else:
+            out.append(ch)
+    return "".join(out)
 
 
 def normalize(q, profile=None):
-    q = unicodedata.normalize("NFC", q).lower().translate(APOS)
+    q = strip_controls(unicodedata.normalize("NFC", q)).lower().translate(APOS)
     q = re.sub(r"\s+", " ", q).strip()
     fix = profile.get("apostrophe_fix") if profile else None
     if fix:

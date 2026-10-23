@@ -23,7 +23,7 @@ the command line, so there are no quoting problems with non-Latin text.
 | `exclude_languages` | list | no | Profile ids whose phrasing should be dropped, e.g. `["ru"]` for a Ukrainian project. |
 | `allow_words` | list | no | Words never treated as foreign-language evidence (fixes false positives). |
 | `exclude.stems` | list | no | Drop phrases with a word starting with one of these (or containing it, if it has a space). |
-| `exclude.regex` | list | no | Python regular expressions; drop matching phrases. |
+| `exclude.regex` | list | no | Python regular expressions; drop matching phrases. Each runs on every phrase, so keep them simple: avoid nested repeats like `(a+)+`, which can hang on long input. |
 | `limits.max_requests` | int | no | Network requests per run (default 3000, max 200000). Cached answers are free. |
 | `limits.workers` | int | no | Parallel connections, 1-4 (default 2). |
 | `limits.interval` | float | no | Minimum seconds between any two requests, ≥ 0.3 (default 0.4). |
