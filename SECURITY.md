@@ -2,13 +2,18 @@
 
 ## Reporting a vulnerability
 
-Please report security issues privately through GitHub: **Security → Report a
-vulnerability** on this repository (private vulnerability reporting). Do not
-open a public issue for a vulnerability. Include the version (release tag), the
-steps to reproduce and the impact you expect.
+This project has no private reporting channel. To report a security issue, open
+a GitHub issue titled "Security: <short topic>" and say **only** that you found
+a vulnerability and which part it concerns (for example "the collector" or "the
+release workflow"). Please do not put exploit details, proof-of-concept code or
+anyone's personal data in the issue. The maintainer will reply there and
+arrange a way to receive the details.
 
-You should get an acknowledgement within 7 days. Fixes are released as a new
-version tag and noted in `CHANGELOG.md`.
+Issues that are not sensitive (a hardening idea, a doc error, a missing check)
+can be reported in full in a normal issue or pull request.
+
+This is a best-effort, volunteer-run project: there is no guaranteed response
+time. Fixes are released as a new version tag and noted in `CHANGELOG.md`.
 
 ## Supported versions
 
